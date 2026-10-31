@@ -83,6 +83,13 @@
     <select id="role" required></select>
     <label for="subject">Subject taught</label>
     <input id="subject" type="text" maxlength="60" required>
+    <label for="classLevel">Class</label>
+    <select id="classLevel" required>
+      <option value="">Choose</option>
+      <option>1</option>
+      <option>2</option>
+      <option>3</option>
+    </select>
     <button type="submit">Register</button>
     <button type="button" class="plain" data-home>Back</button>
   </form>
@@ -294,7 +301,7 @@
     e.preventDefault();
     send({ register: {
       name: $('name').value, department: $('department').value, sex: $('sex').value,
-      role: $('role').value, subject: $('subject').value
+      role: $('role').value, subject: $('subject').value, classLevel: $('classLevel').value
     } });
   };
   $('checkInForm').onsubmit = function (e) {
