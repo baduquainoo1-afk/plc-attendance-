@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PLC Attendance</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px;
+         background: #eef2f8; color: #1f2a3d; font-family: Arial, sans-serif; }
+  .card { width: 100%; max-width: 400px; background: #fff; border-radius: 14px; padding: 28px 22px;
+          box-shadow: 0 2px 12px rgba(31, 56, 100, .12); text-align: center; }
+  h1 { margin: 0 0 4px; font-size: 22px; color: #1f3864; }
+  .sub { margin: 0 0 22px; color: #5b6577; }
+  label { display: block; margin-bottom: 8px; font-weight: bold; text-align: left; }
+  input, select { width: 100%; padding: 14px; font-size: 18px; border: 1px solid #b9c2d0; border-radius: 8px;
+                  margin-bottom: 14px; background: #fff; color: inherit; }
+  button { width: 100%; padding: 15px; font-size: 18px; font-weight: bold; color: #fff; background: #1f3864;
+           border: 0; border-radius: 8px; margin-bottom: 10px; cursor: pointer; }
+  button.plain { background: #e4e9f2; color: #1f3864; }
+  button:disabled { opacity: .55; }
+  .message { margin: 0 0 16px; font-size: 17px; line-height: 1.4; }
+  .row { display: flex; gap: 10px; align-items: center; justify-content: space-between; text-align: left;
+         padding: 10px 0; border-top: 1px solid #e4e9f2; font-size: 15px; line-height: 1.35; }
+  .row button { width: auto; padding: 8px 12px; font-size: 14px; margin: 0; }
+  .hint { color: #5b6577; font-size: 14px; }
+  h2 { margin: 18px 0 10px; font-size: 17px; color: #1f3864; text-align: left; }
+  .big { font-size: 46px; line-height: 1; margin-bottom: 10px; color: #1b7f4b; }
+  .hide { display: none; }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1 id="school">PLC Attendance</h1>
+  <p class="sub" id="sub">Loading...</p>
+
+  <div id="home" class="hide">
+    <p class="message" id="hours"></p>
+    <button type="button" id="openRegister">One-Time Registration</button>
+    <button type="button" id="openCheckIn">Check In</button>
+    <button type="button" class="plain" id="openAdmin">Admin</button>
+  </div>
+
+  <form id="loginForm" class="hide">
+    <label for="username">Username</label>
+    <input id="username" type="text" autocapitalize="none" autocomplete="username" maxlength="40" required>
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Log In</button>
+    <button type="button" class="plain" data-home>Back</button>
+  </form>
+
+  <div id="adminPanel" class="hide">
+    <p class="message" id="adminName"></p>
+    <form id="sessionForm">
+      <label for="sessionNumber">PLC session</label>
+      <select id="sessionNumber" required></select>
+      <label for="sessionDate">Date</label>
+      <input id="sessionDate" type="date" required>
+      <label for="sessionOpens">Check-in opens</label>
+      <input id="sessionOpens" type="time" required>
+      <label for="sessionCloses">Check-in closes</label>
+      <input id="sessionCloses" type="time" required>
+      <button type="submit">Create Session</button>
+    </form>
+    <h2>Sessions created</h2>
+    <div id="sessionList"></div>
+    <button type="button" class="plain" id="logOut">Log Out</button>
+  </div>
+
+  <form id="registerForm" class="hide">
+    <label for="name">Full name</label>
+    <input id="name" type="text" autocomplete="name" maxlength="60" required>
+    <label for="department">Department</label>
+    <select id="department" required></select>
+    <label for="sex">Sex</label>
+    <select id="sex" required>
+      <option value="">Choose</option>
+      <option>Male</option>
+      <option>Female</option>
+    </select>
+    <label for="role">Role</label>
+    <select id="role" required></select>
+    <label for="subject">Subject taught</label>
+    <input id="subject" type="text" maxlength="60" required>
+    <button type="submit">Register</button>
+    <button type="button" class="plain" data-home>Back</button>
+  </form>
+
+  <form id="checkInForm" class="hide">
+    <label for="teacher">Your name</label>
+    <select id="teacher" required></select>
+    <button type="submit">Check In</button>
+    <button type="button" class="plain" data-home>Back</button>
+  </form>
+
+  <div id="result" class="hide">
+    <div class="big" id="tick">&#10003;</div>
+    <p class="message" id="resultText"></p>
+    <button type="button" id="resultCheckIn">Check In Now</button>
+    <button type="button" class="plain" data-home>Done</button>
+  </div>
+</main>
+
+<script>
+  var API_URL = 'https://script.google.com/macros/s/AKfycbwnfWsXKIo5YXJpTzquYHreonqiyGiNlfRmJQat_8kYWpKM4ZyZxdig-1Ep_y_-9XxH/exec';
+  function remote(ok, bad) {
+    var r = {
+      withSuccessHandler: function (f) { return remote(f, bad); },
+      withFailureHandler: function (f) { return remote(ok, f); }
+    };
+    ['getInfo', 'submit', 'adminLogin', 'adminData', 'adminCreate', 'adminDelete'].forEach(function (fn) {
+      r[fn] = function () {
+        fetch(API_URL, {
+          method: 'POST',
+          credentials: 'omit',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ fn: fn, args: Array.prototype.slice.call(arguments) })
+        }).then(function (res) { return res.json(); }).then(ok).catch(bad);
+      };
+    });
+    return r;
+  }
+  var google = { script: { run: remote() } };
+</script>
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  var info = null;
+  var token = null;
+  var panels = ['home', 'loginForm', 'adminPanel', 'registerForm', 'checkInForm', 'result'];
+
+  function show(id) {
+    panels.forEach(function (p) { $(p).classList.toggle('hide', p !== id); });
+  }
+  function done(text, ok, canCheckIn) {
+    $('tick').className = ok ? 'big' : 'hide';
+    $('resultText').textContent = text;
+    $('resultCheckIn').className = canCheckIn ? '' : 'hide';
+    show('result');
+  }
+  function remember(name) {
+    try { localStorage.setItem('plcName', name); } catch (e) {}
+  }
+  function recall() {
+    try { return localStorage.getItem('plcName') || ''; } catch (e) { return ''; }
+  }
+  function hours() {
+    var s = info.session || info.next;
+    if (!s) return 'No PLC session has been created yet.';
+    return (info.session ? '' : 'Next: ') + 'Session ' + s.number + ', ' + s.date + ', ' + s.opens + ' - ' + s.closes;
+  }
+  function setOpen() {
+    $('sub').textContent = info.session ? 'Check-in is open' : 'Check-in is closed';
+    $('hours').textContent = hours();
+    $('openCheckIn').disabled = !info.session;
+  }
+  function fillNames() {
+    var box = $('teacher');
+    box.textContent = '';
+    box.appendChild(new Option('Choose your name', ''));
+    info.names.forEach(function (n) { box.appendChild(new Option(n, n)); });
+    box.value = info.names.indexOf(recall()) >= 0 ? recall() : '';
+  }
+  function openCheckIn() {
+    if (!info.names.length) { done('No teachers are registered yet. Please register first.', false); return; }
+    fillNames();
+    show('checkInForm');
+  }
+
+  function call(fn, args, then) {
+    var buttons = document.querySelectorAll('button');
+    var states = [];
+    buttons.forEach(function (b, i) { states[i] = b.disabled; b.disabled = true; });
+    var restore = function () { buttons.forEach(function (b, i) { b.disabled = states[i]; }); };
+    var run = google.script.run
+      .withSuccessHandler(function (res) { restore(); then(res); })
+      .withFailureHandler(function () { restore(); done('Something went wrong. Please try again.', false); });
+    run[fn].apply(run, args);
+  }
+  function send(req) {
+    call('submit', [req], handle);
+  }
+
+  function drawAdmin(view) {
+    $('adminName').textContent = 'Logged in: ' + view.name;
+    var box = $('sessionNumber');
+    box.textContent = '';
+    view.free.forEach(function (n) { box.appendChild(new Option('Session ' + n, n)); });
+    $('sessionDate').value = view.today;
+    $('sessionOpens').value = view.opens;
+    $('sessionCloses').value = view.closes;
+    var list = $('sessionList');
+    list.textContent = '';
+    if (!view.sessions.length) list.textContent = 'None yet.';
+    view.sessions.forEach(function (s) {
+      var row = document.createElement('div');
+      row.className = 'row';
+      var text = document.createElement('span');
+      text.textContent = 'Session ' + s.number + ', ' + s.date + ', ' + s.opens + ' - ' + s.closes + ' (' + s.count + ' checked in)';
+      row.appendChild(text);
+      if (!s.count) {
+        var del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'plain';
+        del.textContent = 'Delete';
+        del.onclick = function () { call('adminDelete', [token, s.number], adminResult); };
+        row.appendChild(del);
+      }
+      list.appendChild(row);
+    });
+    show('adminPanel');
+  }
+  function adminResult(res) {
+    if (res.status === 'ok') { drawAdmin(res.view); return; }
+    if (res.status === 'expired') {
+      token = null;
+      show('loginForm');
+      alert('Your login has expired. Please log in again.');
+      return;
+    }
+    alert({
+      numberTaken: 'That session has already been created.',
+      dateTaken: 'A session already exists on that date.',
+      hasCheckIns: 'That session has check-ins, so it cannot be deleted.',
+      invalid: 'Please check the session, date and times.'
+    }[res.status] || 'The register is busy. Please try again.');
+  }
+
+  function handle(res) {
+    if (res.status === 'ok') {
+      remember(res.name);
+      if (info.names.indexOf(res.name) < 0) info.names.push(res.name);
+      info.names.sort(function (a, b) { return a.localeCompare(b); });
+      $('registerForm').reset();
+      done(res.name + ', you are registered. You will not need to register again.', true, res.open);
+    } else if (res.status === 'registered') {
+      remember(res.name);
+      if (info.names.indexOf(res.name) < 0) info.names.push(res.name);
+      done(res.name + ' is already registered. Please use Check In.', false, !!info.session);
+    } else if (res.status === 'checked') {
+      remember(res.name);
+      done('Thank you, ' + res.name + '. You checked in at ' + res.time +
+        (res.session ? ' for Session ' + res.session : '') + '.', true);
+    } else if (res.status === 'already') {
+      done(res.name + ', you already checked in today at ' + res.time + '.', true);
+    } else if (res.status === 'closed') {
+      info.session = null;
+      setOpen();
+      done('Check-in is closed right now.', false);
+    } else if (res.status === 'invalid') {
+      done('Please check your details and try again.', false);
+    } else if (res.status === 'unknown') {
+      done('That name was not found. Please register first.', false);
+    } else {
+      done('Many teachers are signing in. Please try again in a moment.', false);
+    }
+  }
+
+  $('openRegister').onclick = function () { show('registerForm'); };
+  $('openCheckIn').onclick = openCheckIn;
+  $('openAdmin').onclick = function () {
+    if (token) call('adminData', [token], adminResult);
+    else show('loginForm');
+  };
+  $('logOut').onclick = function () {
+    token = null;
+    show('home');
+  };
+  $('loginForm').onsubmit = function (e) {
+    e.preventDefault();
+    call('adminLogin', [{ username: $('username').value, password: $('password').value }], function (res) {
+      $('password').value = '';
+      if (res.status === 'ok') {
+        token = res.token;
+        drawAdmin(res.view);
+      } else {
+        alert(res.status === 'locked' ? 'Too many tries. Please wait 15 minutes.' :
+          res.status === 'denied' ? 'Wrong username or password.' : 'The register is busy. Please try again.');
+      }
+    });
+  };
+  $('sessionForm').onsubmit = function (e) {
+    e.preventDefault();
+    call('adminCreate', [token, {
+      number: $('sessionNumber').value, date: $('sessionDate').value,
+      opens: $('sessionOpens').value, closes: $('sessionCloses').value
+    }], adminResult);
+  };
+  $('resultCheckIn').onclick = openCheckIn;
+  document.querySelectorAll('[data-home]').forEach(function (b) {
+    b.onclick = function () { show('home'); };
+  });
+  $('registerForm').onsubmit = function (e) {
+    e.preventDefault();
+    send({ register: {
+      name: $('name').value, department: $('department').value, sex: $('sex').value,
+      role: $('role').value, subject: $('subject').value
+    } });
+  };
+  $('checkInForm').onsubmit = function (e) {
+    e.preventDefault();
+    send({ name: $('teacher').value });
+  };
+
+  google.script.run
+    .withSuccessHandler(function (res) {
+      info = res;
+      $('school').textContent = info.school;
+      $('department').appendChild(new Option('Choose', ''));
+      info.departments.forEach(function (d) { $('department').appendChild(new Option(d, d)); });
+      $('role').appendChild(new Option('Choose', ''));
+      info.roles.forEach(function (r) { $('role').appendChild(new Option(r, r)); });
+      setOpen();
+      show('home');
+    })
+    .withFailureHandler(function () { $('sub').textContent = 'Could not load. Please open the link again.'; })
+    .getInfo();
+</script>
+</body>
+</html>
